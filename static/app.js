@@ -1,0 +1,84 @@
+const dropZone = document.getElementById("drop-zone");
+const fileInput = document.getElementById("file-input");
+const statusEl = document.getElementById("status");
+const downloadLink = document.getElementById("download-link");
+const subtitleToggle = document.getElementById("subtitle-toggle");
+const convertMode = document.getElementById("convert-mode");
+const beautyToggle = document.getElementById("beauty-toggle");
+
+function setStatus(message, type = "idle") {
+  statusEl.textContent = message;
+  statusEl.className = `status ${type}`;
+}
+
+function clearDownload() {
+  downloadLink.classList.add("hidden");
+  downloadLink.href = "#";
+}
+
+async function uploadAndConvert(file) {
+  const formData = new FormData();
+  formData.append("video", file);
+  formData.append("subtitle_enabled", subtitleToggle.checked ? "true" : "false");
+  formData.append("convert_mode", convertMode.value);
+  formData.append("beauty_enabled", beautyToggle.checked ? "true" : "false");
+
+  if (subtitleToggle.checked) {
+    setStatus("音声解析と変換中です... 少し時間がかかります。", "loading");
+  } else {
+    setStatus("字幕なしで変換中です...", "loading");
+  }
+  clearDownload();
+
+  try {
+    const response = await fetch("/convert", {
+      method: "POST",
+      body: formData,
+    });
+    const result = await response.json();
+
+    if (!response.ok) {
+      throw new Error(result.error || "変換処理に失敗しました。");
+    }
+
+    const serverMessage = result.message;
+    if (serverMessage) {
+      setStatus(`${serverMessage} ダウンロードできます。`, "success");
+    } else if (subtitleToggle.checked) {
+      setStatus("字幕付き縦動画の変換完了。ダウンロードできます。", "success");
+    } else {
+      setStatus("字幕なし縦動画の変換完了。ダウンロードできます。", "success");
+    }
+    downloadLink.href = result.download_url;
+    downloadLink.classList.remove("hidden");
+  } catch (error) {
+    setStatus(error.message, "error");
+  }
+}
+
+dropZone.addEventListener("click", () => fileInput.click());
+fileInput.addEventListener("change", (event) => {
+  const file = event.target.files?.[0];
+  if (file) {
+    uploadAndConvert(file);
+  }
+});
+
+dropZone.addEventListener("dragover", (event) => {
+  event.preventDefault();
+  dropZone.classList.add("dragover");
+});
+
+dropZone.addEventListener("dragleave", () => {
+  dropZone.classList.remove("dragover");
+});
+
+dropZone.addEventListener("drop", (event) => {
+  event.preventDefault();
+  dropZone.classList.remove("dragover");
+  const file = event.dataTransfer?.files?.[0];
+  if (!file) {
+    return;
+  }
+  uploadAndConvert(file);
+});
