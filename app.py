@@ -20,8 +20,7 @@ OUTPUT_DIR.mkdir(exist_ok=True)
 SUBTITLE_DIR.mkdir(exist_ok=True)
 
 app = Flask(__name__)
-app.config["MAX_CONTENT_LENGTH"] = 1024 * 1024 * 1024  # 1GB
-WHISPER_MODEL = None
+app.config["MAX_CONTENT_LENGTH"] = 500 * 1024 * 1024  # 500MB
 
 
 def is_allowed_file(filename: str) -> bool:
@@ -89,12 +88,13 @@ def split_japanese_text(text: str, max_chars: int = 18) -> str:
 
 
 def generate_japanese_srt(input_path: Path, srt_path: Path) -> None:
-    global WHISPER_MODEL
-    if WHISPER_MODEL is None:
-        # Reuse model across requests to avoid repeated heavy loading.
-        WHISPER_MODEL = whisper.load_model("base")
-    model = WHISPER_MODEL
+    import gc, torch
+    model = whisper.load_model("tiny")
     result = model.transcribe(str(input_path), language="ja")
+    del model
+    gc.collect()
+    if torch.cuda.is_available():
+        torch.cuda.empty_cache()
     segments = result.get("segments", [])
 
     if not segments:
