@@ -1,3 +1,9 @@
+// Debug: catch any global errors and show them
+window.onerror = function(msg, url, line) {
+  var s = document.getElementById("status");
+  if (s) s.textContent = "JS Error: " + msg + " (line " + line + ")";
+};
+
 const dropZone = document.getElementById("drop-zone");
 const fileInput = document.getElementById("file-input");
 const statusEl = document.getElementById("status");
