@@ -290,8 +290,8 @@ def build_filter_chain(
 
     if escaped_srt_path:
         subtitle_style = (
-            f"subtitles=filename='{escaped_srt_path}':force_style='Fontsize=16,Bold=1,PrimaryColour=&H00FFFFFF&,"
-            "BorderStyle=1,Outline=0,Shadow=2,BackColour=&H80000000&,MarginV=60'"
+            f"subtitles=filename='{escaped_srt_path}':force_style='Fontname=Noto Sans CJK JP,Fontsize=16,Bold=1,PrimaryColour=&H00FFFFFF&,"
+            "BorderStyle=1,Outline=2,Shadow=1,BackColour=&H80000000&,MarginV=60'"
         )
         return f"{base_chain},{subtitle_style}{post_flip}"
 
