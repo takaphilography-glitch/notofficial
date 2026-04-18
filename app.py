@@ -192,13 +192,39 @@ def build_output_codec_args(output_ext: str) -> list[str]:
     return codec_args
 
 
+def _ensure_fontconfig() -> dict:
+    """Create a fontconfig config pointing to our fonts dir and return env dict."""
+    font_dir = BASE_DIR / "fonts"
+    conf_path = BASE_DIR / "fonts" / "fonts.conf"
+    if not conf_path.exists() and font_dir.is_dir():
+        conf_path.write_text(f"""<?xml version="1.0"?>
+<!DOCTYPE fontconfig SYSTEM "fonts.dtd">
+<fontconfig>
+  <dir>{font_dir}</dir>
+  <cachedir>/tmp/fc-cache</cachedir>
+</fontconfig>
+""")
+        # Rebuild cache with our config
+        subprocess.run(
+            ["fc-cache", "-fv"],
+            env={**os.environ, "FONTCONFIG_FILE": str(conf_path)},
+            capture_output=True, timeout=30
+        )
+    env = {**os.environ}
+    if conf_path.exists():
+        env["FONTCONFIG_FILE"] = str(conf_path)
+    return env
+
+
 def run_ffmpeg(command: list[str]) -> None:
+    env = _ensure_fontconfig()
     with open(os.devnull, "w") as devnull:
         completed = subprocess.run(
-            command, stdout=devnull, stderr=subprocess.PIPE, text=True, timeout=600
+            command, stdout=devnull, stderr=subprocess.PIPE, text=True,
+            timeout=600, env=env
         )
     if completed.returncode != 0:
-        err = (completed.stderr or "")[-500:]  # last 500 chars only
+        err = (completed.stderr or "")[-500:]
         raise RuntimeError(err.strip() or "FFmpeg conversion failed")
 
 
