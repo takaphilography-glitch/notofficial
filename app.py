@@ -19,7 +19,7 @@ OUTPUT_DIR.mkdir(exist_ok=True)
 SUBTITLE_DIR.mkdir(exist_ok=True)
 
 app = Flask(__name__)
-app.config["MAX_CONTENT_LENGTH"] = 100 * 1024 * 1024  # 100MB
+app.config["MAX_CONTENT_LENGTH"] = 50 * 1024 * 1024  # 50MB
 
 
 def is_allowed_file(filename: str) -> bool:
@@ -161,13 +161,13 @@ def _write_ass_file(ass_path: Path, segments: list) -> None:
     header = """[Script Info]
 Title: Generated Subtitles
 ScriptType: v4.00+
-PlayResX: 720
-PlayResY: 1280
+PlayResX: 540
+PlayResY: 960
 WrapStyle: 0
 
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-Style: Default,Noto Sans CJK JP,36,&H00FFFFFF,&H000000FF,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,2,1,2,10,10,160,1
+Style: Default,Noto Sans CJK JP,28,&H00FFFFFF,&H000000FF,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,2,1,2,10,10,120,1
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
@@ -222,36 +222,11 @@ def build_output_codec_args(output_ext: str) -> list[str]:
     return codec_args
 
 
-def _ensure_fontconfig() -> dict:
-    """Create a fontconfig config pointing to our fonts dir and return env dict."""
-    font_dir = BASE_DIR / "fonts"
-    conf_path = BASE_DIR / "fonts" / "fonts.conf"
-    if not conf_path.exists() and font_dir.is_dir():
-        conf_path.write_text(f"""<?xml version="1.0"?>
-<!DOCTYPE fontconfig SYSTEM "fonts.dtd">
-<fontconfig>
-  <dir>{font_dir}</dir>
-  <cachedir>/tmp/fc-cache</cachedir>
-</fontconfig>
-""")
-        # Rebuild cache with our config
-        subprocess.run(
-            ["fc-cache", "-fv"],
-            env={**os.environ, "FONTCONFIG_FILE": str(conf_path)},
-            capture_output=True, timeout=30
-        )
-    env = {**os.environ}
-    if conf_path.exists():
-        env["FONTCONFIG_FILE"] = str(conf_path)
-    return env
-
-
 def run_ffmpeg(command: list[str]) -> None:
-    env = _ensure_fontconfig()
     with open(os.devnull, "w") as devnull:
         completed = subprocess.run(
             command, stdout=devnull, stderr=subprocess.PIPE, text=True,
-            timeout=600, env=env
+            timeout=600
         )
     if completed.returncode != 0:
         err = (completed.stderr or "")[-500:]
@@ -353,13 +328,13 @@ def build_filter_chain(
 
     if mode == "crop":
         base_chain = (
-            f"{pre_flip}{rotate_filter}scale=720:1280:force_original_aspect_ratio=increase,"
-            "setsar=1,crop=720:1280"
+            f"{pre_flip}{rotate_filter}scale=540:960:force_original_aspect_ratio=increase,"
+            "setsar=1,crop=540:960"
         )
     else:
         # Pad with black bars (low memory usage, no split/blur needed)
         base_chain = (
-            f"{pre_flip}{rotate_filter}scale=720:1280:force_original_aspect_ratio=decrease,"
+            f"{pre_flip}{rotate_filter}scale=540:960:force_original_aspect_ratio=decrease,"
             "setsar=1,pad=720:1280:(ow-iw)/2:(oh-ih)/2:black"
         )
 
