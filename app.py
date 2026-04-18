@@ -175,15 +175,15 @@ def build_output_codec_args(output_ext: str) -> list[str]:
         "-c:v",
         "libx264",
         "-preset",
-        "faster",
+        "ultrafast",
         "-crf",
-        "20",
+        "28",
         "-c:a",
         "aac",
         "-b:a",
-        "128k",
+        "96k",
         "-threads",
-        "0",
+        "1",
         "-metadata:s:v:0",
         "rotate=0",
     ]
@@ -193,9 +193,13 @@ def build_output_codec_args(output_ext: str) -> list[str]:
 
 
 def run_ffmpeg(command: list[str]) -> None:
-    completed = subprocess.run(command, capture_output=True, text=True, timeout=600)
+    with open(os.devnull, "w") as devnull:
+        completed = subprocess.run(
+            command, stdout=devnull, stderr=subprocess.PIPE, text=True, timeout=600
+        )
     if completed.returncode != 0:
-        raise RuntimeError(completed.stderr.strip() or "FFmpeg conversion failed")
+        err = (completed.stderr or "")[-500:]  # last 500 chars only
+        raise RuntimeError(err.strip() or "FFmpeg conversion failed")
 
 
 def get_rotation_degrees(input_path: Path) -> int:
@@ -274,13 +278,10 @@ def build_filter_chain(
             "setsar=1,crop=720:1280"
         )
     else:
-        # Blur-fill: enlarged original video + gaussian blur, no brightness shift.
+        # Pad with black bars (low memory usage, no split/blur needed)
         base_chain = (
-            f"[0:v]{pre_flip}{rotate_filter}split=2[bgin][fgin];"
-            "[bgin]scale=720:1280:force_original_aspect_ratio=increase,setsar=1,"
-            "crop=720:1280,gblur=sigma=10:steps=1[bg];"
-            "[fgin]scale=720:1280:force_original_aspect_ratio=decrease,setsar=1[fg];"
-            "[bg][fg]overlay=(W-w)/2:(H-h)/2"
+            f"{pre_flip}{rotate_filter}scale=720:1280:force_original_aspect_ratio=decrease,"
+            "setsar=1,pad=720:1280:(ow-iw)/2:(oh-ih)/2:black"
         )
 
     # Lightweight beautify pass: soften details and lift skin tone slightly.
