@@ -87,35 +87,65 @@ def split_japanese_text(text: str, max_chars: int = 18) -> str:
 
 
 def generate_japanese_srt(input_path: Path, srt_path: Path) -> None:
-    import assemblyai as aai
+    import requests as http_requests
+    import time
 
     api_key = os.environ.get("ASSEMBLYAI_API_KEY", "")
     if not api_key:
         raise RuntimeError("ASSEMBLYAI_API_KEY が設定されていません。")
 
-    aai.settings.api_key = api_key
-    config = aai.TranscriptionConfig(language_code="ja")
-    config.speech_models = ["universal-2"]
-    transcriber = aai.Transcriber()
-    transcript = transcriber.transcribe(str(input_path), config=config)
+    headers = {"authorization": api_key}
+    base_url = "https://api.assemblyai.com/v2"
 
-    if transcript.status == aai.TranscriptStatus.error:
-        raise RuntimeError(f"文字起こしに失敗しました: {transcript.error}")
+    # 1. Upload audio file
+    with open(input_path, "rb") as f:
+        upload_resp = http_requests.post(
+            f"{base_url}/upload", headers=headers, data=f
+        )
+    if upload_resp.status_code != 200:
+        raise RuntimeError(f"アップロードに失敗しました: {upload_resp.text}")
+    audio_url = upload_resp.json()["upload_url"]
 
-    if not transcript.utterances and not transcript.words:
-        # Use sentence-level if utterances not available
-        segments = transcript.sentences() if transcript.sentences() else []
-    else:
-        segments = transcript.sentences() if transcript.sentences() else []
+    # 2. Request transcription
+    transcript_resp = http_requests.post(
+        f"{base_url}/transcript",
+        headers=headers,
+        json={
+            "audio_url": audio_url,
+            "language_code": "ja",
+            "speech_models": ["universal-2"],
+        },
+    )
+    if transcript_resp.status_code != 200:
+        raise RuntimeError(f"文字起こしリクエストに失敗: {transcript_resp.text}")
+    transcript_id = transcript_resp.json()["id"]
+
+    # 3. Poll until completion
+    polling_url = f"{base_url}/transcript/{transcript_id}"
+    while True:
+        poll_resp = http_requests.get(polling_url, headers=headers)
+        data = poll_resp.json()
+        status = data.get("status")
+        if status == "completed":
+            break
+        elif status == "error":
+            raise RuntimeError(f"文字起こしに失敗: {data.get('error', '不明なエラー')}")
+        time.sleep(3)
+
+    # 4. Get sentences
+    sentences_resp = http_requests.get(
+        f"{base_url}/transcript/{transcript_id}/sentences", headers=headers
+    )
+    segments = sentences_resp.json().get("sentences", [])
 
     if not segments:
         raise RuntimeError("音声認識結果が空でした。音声トラックがあるか確認してください。")
 
     with srt_path.open("w", encoding="utf-8") as srt_file:
         for index, seg in enumerate(segments, start=1):
-            start = format_srt_timestamp(seg.start / 1000.0)
-            end = format_srt_timestamp(seg.end / 1000.0)
-            text = seg.text.strip()
+            start = format_srt_timestamp(seg["start"] / 1000.0)
+            end = format_srt_timestamp(seg["end"] / 1000.0)
+            text = seg["text"].strip()
             if not text:
                 continue
             formatted_text = split_japanese_text(text)
