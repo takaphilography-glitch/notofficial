@@ -87,22 +87,33 @@ def split_japanese_text(text: str, max_chars: int = 18) -> str:
 
 
 def generate_japanese_srt(input_path: Path, srt_path: Path) -> None:
-    import gc
-    from faster_whisper import WhisperModel
+    import assemblyai as aai
 
-    model = WhisperModel("tiny", device="cpu", compute_type="int8")
-    segments_iter, _info = model.transcribe(str(input_path), language="ja")
-    segments = list(segments_iter)
-    del model
-    gc.collect()
+    api_key = os.environ.get("ASSEMBLYAI_API_KEY", "")
+    if not api_key:
+        raise RuntimeError("ASSEMBLYAI_API_KEY が設定されていません。")
+
+    aai.settings.api_key = api_key
+    config = aai.TranscriptionConfig(language_code="ja")
+    transcriber = aai.Transcriber()
+    transcript = transcriber.transcribe(str(input_path), config=config)
+
+    if transcript.status == aai.TranscriptStatus.error:
+        raise RuntimeError(f"文字起こしに失敗しました: {transcript.error}")
+
+    if not transcript.utterances and not transcript.words:
+        # Use sentence-level if utterances not available
+        segments = transcript.sentences() if transcript.sentences() else []
+    else:
+        segments = transcript.sentences() if transcript.sentences() else []
 
     if not segments:
         raise RuntimeError("音声認識結果が空でした。音声トラックがあるか確認してください。")
 
     with srt_path.open("w", encoding="utf-8") as srt_file:
         for index, seg in enumerate(segments, start=1):
-            start = format_srt_timestamp(seg.start)
-            end = format_srt_timestamp(seg.end)
+            start = format_srt_timestamp(seg.start / 1000.0)
+            end = format_srt_timestamp(seg.end / 1000.0)
             text = seg.text.strip()
             if not text:
                 continue
