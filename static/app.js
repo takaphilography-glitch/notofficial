@@ -47,11 +47,22 @@ async function uploadAndConvert(file) {
   clearDownload();
 
   try {
-    const response = await fetch("/convert", {
-      method: "POST",
-      body: formData,
-    });
-    const result = await response.json();
+    var response;
+    try {
+      response = await fetch("/convert", {
+        method: "POST",
+        body: formData,
+      });
+    } catch (networkErr) {
+      throw new Error("サーバーに接続できません。しばらく待ってから再試行してください。");
+    }
+
+    var result;
+    try {
+      result = await response.json();
+    } catch (parseErr) {
+      throw new Error("サーバーエラーが発生しました（ステータス: " + response.status + "）");
+    }
 
     if (!response.ok) {
       throw new Error(result.error || "変換処理に失敗しました。");
