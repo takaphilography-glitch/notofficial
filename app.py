@@ -249,7 +249,7 @@ def build_filter_chain(
 
     if escaped_srt_path:
         subtitle_style = (
-            f"subtitles='{escaped_srt_path}':force_style='Fontsize=16,Bold=1,PrimaryColour=&H00FFFFFF&,"
+            f"subtitles=filename='{escaped_srt_path}':force_style='Fontsize=16,Bold=1,PrimaryColour=&H00FFFFFF&,"
             "BorderStyle=1,Outline=0,Shadow=2,BackColour=&H80000000&,MarginV=60'"
         )
         return f"{base_chain},{subtitle_style}{post_flip}"
@@ -265,7 +265,8 @@ def convert_to_vertical_with_subtitles(
     beauty_enabled: bool,
     rotation_degrees: int,
 ) -> None:
-    escaped_srt = str(srt_path).replace("\\", "\\\\").replace(":", "\\:")
+    # Inside ffmpeg single-quoted filter values, only \ and ' need escaping (not :)
+    escaped_srt = str(srt_path).replace("\\", "\\\\").replace("'", "\\'")
     filter_chain = build_filter_chain(mode, rotation_degrees, escaped_srt, beauty_enabled)
     command = [
         "ffmpeg",
