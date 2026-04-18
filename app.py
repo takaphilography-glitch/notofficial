@@ -141,17 +141,47 @@ def generate_japanese_srt(input_path: Path, srt_path: Path) -> None:
     if not segments:
         raise RuntimeError("音声認識結果が空でした。音声トラックがあるか確認してください。")
 
-    with srt_path.open("w", encoding="utf-8") as srt_file:
-        for index, seg in enumerate(segments, start=1):
-            start = format_srt_timestamp(seg["start"] / 1000.0)
-            end = format_srt_timestamp(seg["end"] / 1000.0)
+    _write_ass_file(srt_path, segments)
+
+
+def _ass_timestamp(ms: int) -> str:
+    """Convert milliseconds to ASS timestamp H:MM:SS.cc"""
+    total_cs = ms // 10
+    h = total_cs // 360000
+    total_cs %= 360000
+    m = total_cs // 6000
+    total_cs %= 6000
+    s = total_cs // 100
+    cs = total_cs % 100
+    return f"{h}:{m:02}:{s:02}.{cs:02}"
+
+
+def _write_ass_file(ass_path: Path, segments: list) -> None:
+    """Write an ASS subtitle file with embedded font reference."""
+    header = """[Script Info]
+Title: Generated Subtitles
+ScriptType: v4.00+
+PlayResX: 720
+PlayResY: 1280
+WrapStyle: 0
+
+[V4+ Styles]
+Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
+Style: Default,NotoSansCJKjp,20,&H00FFFFFF,&H000000FF,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,2,1,2,10,10,50,1
+
+[Events]
+Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
+"""
+    with ass_path.open("w", encoding="utf-8") as f:
+        f.write(header)
+        for seg in segments:
+            start = _ass_timestamp(seg["start"])
+            end = _ass_timestamp(seg["end"])
             text = seg["text"].strip()
             if not text:
                 continue
-            formatted_text = split_japanese_text(text)
-            srt_file.write(f"{index}\n")
-            srt_file.write(f"{start} --> {end}\n")
-            srt_file.write(f"{formatted_text}\n\n")
+            formatted = split_japanese_text(text).replace("\n", "\\N")
+            f.write(f"Dialogue: 0,{start},{end},Default,,0,0,0,,{formatted}\n")
 
 
 def build_output_codec_args(output_ext: str) -> list[str]:
@@ -339,23 +369,11 @@ def build_filter_chain(
 
     if escaped_srt_path:
         font_dir = str(Path(__file__).resolve().parent / "fonts")
-        # Find actual font file for direct embedding
-        font_file = _find_japanese_font(font_dir)
-        if font_file:
-            # Use fontsdir so libass can find the font
-            subtitle_style = (
-                f"subtitles=filename='{escaped_srt_path}':fontsdir='{font_dir}'"
-                ":force_style='Fontname=Noto Sans CJK JP,Fontsize=18,Bold=1,PrimaryColour=&H00FFFFFF&,"
-                "BorderStyle=1,Outline=2,Shadow=1,BackColour=&H80000000&,MarginV=50'"
-            )
-        else:
-            # Fallback: no explicit font, rely on system default
-            subtitle_style = (
-                f"subtitles=filename='{escaped_srt_path}'"
-                ":force_style='Fontsize=18,Bold=1,PrimaryColour=&H00FFFFFF&,"
-                "BorderStyle=1,Outline=2,Shadow=1,BackColour=&H80000000&,MarginV=50'"
-            )
-        return f"{base_chain},{subtitle_style}{post_flip}"
+        escaped_font_dir = font_dir.replace("\\", "\\\\").replace("'", "\\'")
+        subtitle_filter = (
+            f"ass=filename='{escaped_srt_path}':fontsdir='{escaped_font_dir}'"
+        )
+        return f"{base_chain},{subtitle_filter}{post_flip}"
 
     return base_chain
 
@@ -408,6 +426,15 @@ def debug_fonts():
     """Check which fonts are available on the server."""
     font_dir = str(BASE_DIR / "fonts")
     found = _find_japanese_font(font_dir)
+    # Get internal font name
+    fc_query = ""
+    if found:
+        try:
+            r = subprocess.run(["fc-query", "--format=%{family}\n", found],
+                               capture_output=True, text=True, timeout=10)
+            fc_query = r.stdout.strip()
+        except Exception as e:
+            fc_query = str(e)
     fonts_in_dir = []
     if Path(font_dir).is_dir():
         fonts_in_dir = [f.name for f in Path(font_dir).iterdir()]
@@ -421,6 +448,7 @@ def debug_fonts():
         "font_dir": font_dir,
         "fonts_in_dir": fonts_in_dir,
         "found_font": found,
+        "font_family_name": fc_query,
         "fc_list_ja": fc_output,
     })
 
