@@ -94,7 +94,7 @@ def generate_japanese_srt(input_path: Path, srt_path: Path) -> None:
         raise RuntimeError("ASSEMBLYAI_API_KEY が設定されていません。")
 
     aai.settings.api_key = api_key
-    config = aai.TranscriptionConfig(language_code="ja")
+    config = aai.TranscriptionConfig(language_code="ja", speech_model="universal-2")
     transcriber = aai.Transcriber()
     transcript = transcriber.transcribe(str(input_path), config=config)
 
