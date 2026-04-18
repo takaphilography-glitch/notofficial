@@ -289,8 +289,10 @@ def build_filter_chain(
         base_chain = f"{base_chain},hqdn3d=1.5:1.5:6:6,eq=brightness=0.02:saturation=1.08:gamma=1.02"
 
     if escaped_srt_path:
+        font_dir = str(Path(__file__).resolve().parent / "fonts")
         subtitle_style = (
-            f"subtitles=filename='{escaped_srt_path}':force_style='Fontname=Noto Sans CJK JP,Fontsize=16,Bold=1,PrimaryColour=&H00FFFFFF&,"
+            f"subtitles=filename='{escaped_srt_path}':fontsdir='{font_dir}'"
+            ":force_style='Fontname=Noto Sans JP,Fontsize=16,Bold=1,PrimaryColour=&H00FFFFFF&,"
             "BorderStyle=1,Outline=2,Shadow=1,BackColour=&H80000000&,MarginV=60'"
         )
         return f"{base_chain},{subtitle_style}{post_flip}"
