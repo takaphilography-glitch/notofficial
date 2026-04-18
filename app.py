@@ -184,6 +184,57 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
             f.write(f"Dialogue: 0,{start},{end},Default,,0,0,0,,{formatted}\n")
 
 
+def generate_japanese_srt_file(input_path: Path, srt_path: Path) -> None:
+    """Generate SRT subtitle file using AssemblyAI (separate from video)."""
+    import requests as http_requests
+    import time
+
+    api_key = os.environ.get("ASSEMBLYAI_API_KEY", "")
+    if not api_key:
+        raise RuntimeError("ASSEMBLYAI_API_KEY が設定されていません。")
+
+    headers = {"authorization": api_key}
+    base_url = "https://api.assemblyai.com/v2"
+
+    with open(input_path, "rb") as f:
+        upload_resp = http_requests.post(f"{base_url}/upload", headers=headers, data=f)
+    if upload_resp.status_code != 200:
+        raise RuntimeError(f"アップロードに失敗しました: {upload_resp.text}")
+    audio_url = upload_resp.json()["upload_url"]
+
+    transcript_resp = http_requests.post(
+        f"{base_url}/transcript", headers=headers,
+        json={"audio_url": audio_url, "language_code": "ja", "speech_models": ["universal-2"]},
+    )
+    if transcript_resp.status_code != 200:
+        raise RuntimeError(f"文字起こし失敗: {transcript_resp.text}")
+    transcript_id = transcript_resp.json()["id"]
+
+    while True:
+        poll = http_requests.get(f"{base_url}/transcript/{transcript_id}", headers=headers).json()
+        if poll["status"] == "completed":
+            break
+        elif poll["status"] == "error":
+            raise RuntimeError(f"文字起こし失敗: {poll.get('error')}")
+        time.sleep(3)
+
+    sentences = http_requests.get(
+        f"{base_url}/transcript/{transcript_id}/sentences", headers=headers
+    ).json().get("sentences", [])
+
+    if not sentences:
+        raise RuntimeError("音声認識結果が空でした。")
+
+    with srt_path.open("w", encoding="utf-8") as f:
+        for i, seg in enumerate(sentences, 1):
+            start = format_srt_timestamp(seg["start"] / 1000.0)
+            end = format_srt_timestamp(seg["end"] / 1000.0)
+            text = seg["text"].strip()
+            if not text:
+                continue
+            f.write(f"{i}\n{start} --> {end}\n{split_japanese_text(text)}\n\n")
+
+
 def build_output_codec_args(output_ext: str) -> list[str]:
     if output_ext == ".webm":
         return [
@@ -477,22 +528,20 @@ def convert():
 
     video.save(input_path)
 
+    srt_output = SUBTITLE_DIR / f"{file_id}.srt"
     try:
         rotation_degrees = get_rotation_degrees(input_path)
+        # Always convert without burning subtitles (saves memory)
+        convert_to_vertical_without_subtitles(
+            input_path, output_path, convert_mode, beauty_enabled, rotation_degrees
+        )
+        # Generate subtitle file separately if requested
         if subtitle_enabled:
-            generate_japanese_srt(input_path, srt_path)
-            convert_to_vertical_with_subtitles(
-                input_path, output_path, srt_path, convert_mode, beauty_enabled, rotation_degrees
-            )
-        else:
-            convert_to_vertical_without_subtitles(
-                input_path, output_path, convert_mode, beauty_enabled, rotation_degrees
-            )
+            generate_japanese_srt_file(input_path, srt_output)
     except Exception as exc:
-        if input_path.exists():
-            input_path.unlink()
-        if srt_path.exists():
-            srt_path.unlink()
+        for p in [input_path, srt_path, srt_output]:
+            if p.exists():
+                p.unlink()
         return jsonify({"error": f"変換に失敗しました: {exc}"}), 500
     finally:
         if input_path.exists():
@@ -500,13 +549,15 @@ def convert():
         if srt_path.exists():
             srt_path.unlink()
 
-    return jsonify(
-        {
-            "message": "変換が完了しました。",
-            "download_url": f"/download/{output_path.name}",
-            "filename": output_path.name,
-        }
-    )
+    result = {
+        "message": "変換が完了しました。",
+        "download_url": f"/download/{output_path.name}",
+        "filename": output_path.name,
+    }
+    if subtitle_enabled and srt_output.exists():
+        result["subtitle_url"] = f"/download-sub/{srt_output.name}"
+        result["message"] = "変換が完了しました。字幕ファイルも生成しました。"
+    return jsonify(result)
 
 
 @app.route("/download/<path:filename>", methods=["GET"])
@@ -514,7 +565,14 @@ def download(filename: str):
     target = OUTPUT_DIR / filename
     if not target.exists():
         return jsonify({"error": "ファイルが見つかりません。"}), 404
+    return send_file(target, as_attachment=True, download_name=target.name)
 
+
+@app.route("/download-sub/<path:filename>", methods=["GET"])
+def download_subtitle(filename: str):
+    target = SUBTITLE_DIR / filename
+    if not target.exists():
+        return jsonify({"error": "字幕ファイルが見つかりません。"}), 404
     return send_file(target, as_attachment=True, download_name=target.name)
 
 

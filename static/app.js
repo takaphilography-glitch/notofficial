@@ -78,6 +78,12 @@ async function uploadAndConvert(file) {
     }
     downloadLink.href = result.download_url;
     downloadLink.classList.remove("hidden");
+    // Show subtitle download link if available
+    var subLink = document.getElementById("subtitle-link");
+    if (result.subtitle_url && subLink) {
+      subLink.href = result.subtitle_url;
+      subLink.classList.remove("hidden");
+    }
   } catch (error) {
     setStatus(error.message, "error");
   }
