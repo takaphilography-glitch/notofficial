@@ -361,21 +361,40 @@ def convert_to_vertical_with_subtitles(
     beauty_enabled: bool,
     rotation_degrees: int,
 ) -> None:
-    # Inside ffmpeg single-quoted filter values, only \ and ' need escaping (not :)
-    escaped_srt = str(srt_path).replace("\\", "\\\\").replace("'", "\\'")
-    filter_chain = build_filter_chain(mode, rotation_degrees, escaped_srt, beauty_enabled)
-    command = [
-        "ffmpeg",
-        "-y",
-        "-noautorotate",
-        "-i",
-        str(input_path),
-        "-filter_complex",
-        filter_chain,
+    # Step 1: Convert video without subtitles to a temp file
+    temp_path = output_path.parent / f"temp_{output_path.name}"
+    filter_chain = build_filter_chain(mode, rotation_degrees, beauty_enabled=beauty_enabled)
+    cmd1 = [
+        "ffmpeg", "-y", "-noautorotate",
+        "-i", str(input_path),
+        "-filter_complex", filter_chain,
         *build_output_codec_args(output_path.suffix.lower()),
+        str(temp_path),
+    ]
+    run_ffmpeg(cmd1)
+
+    # Delete original input to free memory
+    if input_path.exists():
+        input_path.unlink()
+
+    # Step 2: Burn subtitles onto the already-small temp file
+    escaped_srt = str(srt_path).replace("\\", "\\\\").replace("'", "\\'")
+    font_dir = str(Path(__file__).resolve().parent / "fonts")
+    escaped_font_dir = font_dir.replace("\\", "\\\\").replace("'", "\\'")
+    sub_filter = f"ass=filename='{escaped_srt}':fontsdir='{escaped_font_dir}'"
+    cmd2 = [
+        "ffmpeg", "-y",
+        "-i", str(temp_path),
+        "-vf", sub_filter,
+        "-c:v", "libx264", "-preset", "ultrafast", "-crf", "28",
+        "-c:a", "copy", "-threads", "1",
         str(output_path),
     ]
-    run_ffmpeg(command)
+    try:
+        run_ffmpeg(cmd2)
+    finally:
+        if temp_path.exists():
+            temp_path.unlink()
 
 
 def convert_to_vertical_without_subtitles(
@@ -383,13 +402,9 @@ def convert_to_vertical_without_subtitles(
 ) -> None:
     filter_chain = build_filter_chain(mode, rotation_degrees, beauty_enabled=beauty_enabled)
     command = [
-        "ffmpeg",
-        "-y",
-        "-noautorotate",
-        "-i",
-        str(input_path),
-        "-filter_complex",
-        filter_chain,
+        "ffmpeg", "-y", "-noautorotate",
+        "-i", str(input_path),
+        "-filter_complex", filter_chain,
         *build_output_codec_args(output_path.suffix.lower()),
         str(output_path),
     ]
