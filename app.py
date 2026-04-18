@@ -19,7 +19,7 @@ OUTPUT_DIR.mkdir(exist_ok=True)
 SUBTITLE_DIR.mkdir(exist_ok=True)
 
 app = Flask(__name__)
-app.config["MAX_CONTENT_LENGTH"] = 500 * 1024 * 1024  # 500MB
+app.config["MAX_CONTENT_LENGTH"] = 100 * 1024 * 1024  # 100MB
 
 
 def is_allowed_file(filename: str) -> bool:
@@ -193,7 +193,7 @@ def build_output_codec_args(output_ext: str) -> list[str]:
 
 
 def run_ffmpeg(command: list[str]) -> None:
-    completed = subprocess.run(command, capture_output=True, text=True)
+    completed = subprocess.run(command, capture_output=True, text=True, timeout=600)
     if completed.returncode != 0:
         raise RuntimeError(completed.stderr.strip() or "FFmpeg conversion failed")
 
@@ -270,16 +270,16 @@ def build_filter_chain(
 
     if mode == "crop":
         base_chain = (
-            f"{pre_flip}{rotate_filter}scale=1080:1920:force_original_aspect_ratio=increase,"
-            "setsar=1,crop=1080:1920"
+            f"{pre_flip}{rotate_filter}scale=720:1280:force_original_aspect_ratio=increase,"
+            "setsar=1,crop=720:1280"
         )
     else:
         # Blur-fill: enlarged original video + gaussian blur, no brightness shift.
         base_chain = (
             f"[0:v]{pre_flip}{rotate_filter}split=2[bgin][fgin];"
-            "[bgin]scale=1080:1920:force_original_aspect_ratio=increase,setsar=1,"
-            "crop=1080:1920,gblur=sigma=14:steps=2[bg];"
-            "[fgin]scale=1080:1920:force_original_aspect_ratio=decrease,setsar=1[fg];"
+            "[bgin]scale=720:1280:force_original_aspect_ratio=increase,setsar=1,"
+            "crop=720:1280,gblur=sigma=10:steps=1[bg];"
+            "[fgin]scale=720:1280:force_original_aspect_ratio=decrease,setsar=1[fg];"
             "[bg][fg]overlay=(W-w)/2:(H-h)/2"
         )
 
