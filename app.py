@@ -5,7 +5,6 @@ import uuid
 from pathlib import Path
 
 from flask import Flask, jsonify, render_template, request, send_file
-import whisper
 from werkzeug.utils import secure_filename
 
 
@@ -88,7 +87,9 @@ def split_japanese_text(text: str, max_chars: int = 18) -> str:
 
 
 def generate_japanese_srt(input_path: Path, srt_path: Path) -> None:
-    import gc, torch
+    import gc
+    import whisper
+    import torch
     model = whisper.load_model("tiny")
     result = model.transcribe(str(input_path), language="ja")
     del model
