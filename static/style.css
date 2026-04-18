@@ -31,6 +31,7 @@ h1 {
 }
 
 .drop-zone {
+  display: block;
   border: 2px dashed #5f7cff;
   border-radius: 16px;
   padding: 48px 20px;

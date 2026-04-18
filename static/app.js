@@ -66,7 +66,7 @@ async function uploadAndConvert(file) {
   }
 }
 
-dropZone.addEventListener("click", () => fileInput.click());
+// label[for] handles click->file dialog natively, no JS click() needed
 fileInput.addEventListener("change", (event) => {
   const file = event.target.files?.[0];
   if (file) {
