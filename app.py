@@ -524,14 +524,12 @@ def convert():
         output_ext = ".mp4"
     input_path = UPLOAD_DIR / f"{file_id}_{safe_name}"
     output_path = OUTPUT_DIR / f"{file_id}_vertical{output_ext}"
-    srt_path = SUBTITLE_DIR / f"{file_id}.srt"
-
     video.save(input_path)
 
-    srt_output = SUBTITLE_DIR / f"{file_id}.srt"
+    srt_output = SUBTITLE_DIR / f"{file_id}_subtitle.srt"
     try:
         rotation_degrees = get_rotation_degrees(input_path)
-        # Always convert without burning subtitles (saves memory)
+        # Convert video without subtitles (saves memory on free tier)
         convert_to_vertical_without_subtitles(
             input_path, output_path, convert_mode, beauty_enabled, rotation_degrees
         )
@@ -539,15 +537,13 @@ def convert():
         if subtitle_enabled:
             generate_japanese_srt_file(input_path, srt_output)
     except Exception as exc:
-        for p in [input_path, srt_path, srt_output]:
+        for p in [input_path, srt_output]:
             if p.exists():
                 p.unlink()
         return jsonify({"error": f"変換に失敗しました: {exc}"}), 500
     finally:
         if input_path.exists():
             input_path.unlink()
-        if srt_path.exists():
-            srt_path.unlink()
 
     result = {
         "message": "変換が完了しました。",
