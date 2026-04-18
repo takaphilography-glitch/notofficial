@@ -257,6 +257,29 @@ def build_rotation_filter(rotation_degrees: int) -> str:
     return ""
 
 
+def _find_japanese_font(font_dir: str) -> str | None:
+    """Return path to first Japanese font found, or None."""
+    font_path = Path(font_dir)
+    if font_path.is_dir():
+        for ext in ("*.otf", "*.ttf"):
+            files = list(font_path.glob(ext))
+            if files:
+                return str(files[0])
+    # Also check system fonts
+    for sys_path in [
+        "/usr/share/fonts/opentype/noto",
+        "/usr/share/fonts/truetype/noto",
+        "/usr/local/share/fonts",
+    ]:
+        p = Path(sys_path)
+        if p.is_dir():
+            for ext in ("*.otf", "*.ttf"):
+                files = [f for f in p.glob(ext) if "CJK" in f.name or "JP" in f.name]
+                if files:
+                    return str(files[0])
+    return None
+
+
 def build_filter_chain(
     mode: str,
     rotation_degrees: int,
@@ -290,11 +313,22 @@ def build_filter_chain(
 
     if escaped_srt_path:
         font_dir = str(Path(__file__).resolve().parent / "fonts")
-        subtitle_style = (
-            f"subtitles=filename='{escaped_srt_path}':fontsdir='{font_dir}'"
-            ":force_style='Fontname=Noto Sans JP,Fontsize=16,Bold=1,PrimaryColour=&H00FFFFFF&,"
-            "BorderStyle=1,Outline=2,Shadow=1,BackColour=&H80000000&,MarginV=60'"
-        )
+        # Find actual font file for direct embedding
+        font_file = _find_japanese_font(font_dir)
+        if font_file:
+            # Use fontsdir so libass can find the font
+            subtitle_style = (
+                f"subtitles=filename='{escaped_srt_path}':fontsdir='{font_dir}'"
+                ":force_style='Fontname=Noto Sans CJK JP,Fontsize=18,Bold=1,PrimaryColour=&H00FFFFFF&,"
+                "BorderStyle=1,Outline=2,Shadow=1,BackColour=&H80000000&,MarginV=50'"
+            )
+        else:
+            # Fallback: no explicit font, rely on system default
+            subtitle_style = (
+                f"subtitles=filename='{escaped_srt_path}'"
+                ":force_style='Fontsize=18,Bold=1,PrimaryColour=&H00FFFFFF&,"
+                "BorderStyle=1,Outline=2,Shadow=1,BackColour=&H80000000&,MarginV=50'"
+            )
         return f"{base_chain},{subtitle_style}{post_flip}"
 
     return base_chain
@@ -341,6 +375,28 @@ def convert_to_vertical_without_subtitles(
         str(output_path),
     ]
     run_ffmpeg(command)
+
+
+@app.route("/debug/fonts")
+def debug_fonts():
+    """Check which fonts are available on the server."""
+    font_dir = str(BASE_DIR / "fonts")
+    found = _find_japanese_font(font_dir)
+    fonts_in_dir = []
+    if Path(font_dir).is_dir():
+        fonts_in_dir = [f.name for f in Path(font_dir).iterdir()]
+    # Check fc-list
+    try:
+        fc = subprocess.run(["fc-list", ":lang=ja"], capture_output=True, text=True, timeout=10)
+        fc_output = fc.stdout[:2000]
+    except Exception as e:
+        fc_output = str(e)
+    return jsonify({
+        "font_dir": font_dir,
+        "fonts_in_dir": fonts_in_dir,
+        "found_font": found,
+        "fc_list_ja": fc_output,
+    })
 
 
 @app.route("/")
