@@ -16,7 +16,17 @@ function clearDownload() {
   downloadLink.href = "#";
 }
 
+function isVideoFile(file) {
+  if (file.type && file.type.startsWith("video/")) return true;
+  const ext = file.name.split(".").pop().toLowerCase();
+  return ["mp4", "mov", "mkv", "avi", "webm", "m4v", "3gp"].includes(ext);
+}
+
 async function uploadAndConvert(file) {
+  if (!isVideoFile(file)) {
+    setStatus("動画ファイルを選択してください。", "error");
+    return;
+  }
   const formData = new FormData();
   formData.append("video", file);
   formData.append("subtitle_enabled", subtitleToggle.checked ? "true" : "false");
