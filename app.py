@@ -88,27 +88,24 @@ def split_japanese_text(text: str, max_chars: int = 18) -> str:
 
 def generate_japanese_srt(input_path: Path, srt_path: Path) -> None:
     import gc
-    import whisper
-    import torch
-    model = whisper.load_model("tiny")
-    result = model.transcribe(str(input_path), language="ja")
+    from faster_whisper import WhisperModel
+
+    model = WhisperModel("tiny", device="cpu", compute_type="int8")
+    segments_iter, _info = model.transcribe(str(input_path), language="ja")
+    segments = list(segments_iter)
     del model
     gc.collect()
-    if torch.cuda.is_available():
-        torch.cuda.empty_cache()
-    segments = result.get("segments", [])
 
     if not segments:
         raise RuntimeError("音声認識結果が空でした。音声トラックがあるか確認してください。")
 
     with srt_path.open("w", encoding="utf-8") as srt_file:
         for index, seg in enumerate(segments, start=1):
-            start = format_srt_timestamp(float(seg["start"]))
-            end = format_srt_timestamp(float(seg["end"]))
-            text = seg["text"].strip()
+            start = format_srt_timestamp(seg.start)
+            end = format_srt_timestamp(seg.end)
+            text = seg.text.strip()
             if not text:
                 continue
-            # 単語の途中で改行されないよう、自然な位置で改行を入れる
             formatted_text = split_japanese_text(text)
             srt_file.write(f"{index}\n")
             srt_file.write(f"{start} --> {end}\n")
