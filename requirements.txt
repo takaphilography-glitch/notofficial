@@ -1,2 +1,3 @@
 Flask==3.0.3
 openai-whisper==20240930
+gunicorn==22.0.0
